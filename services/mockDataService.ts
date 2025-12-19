@@ -312,6 +312,68 @@ const fetchCsvSafely = async (url: string): Promise<string | null> => {
   return null;
 };
 
+// --- Parse Summary CSV (for metrics) ---
+const parseSummaryCsv = (csvText: string): Map<string, { mae: number; rmse: number; r2: number; mape: number }> => {
+  const metrics = new Map<string, { mae: number; rmse: number; r2: number; mape: number }>();
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return metrics;
+
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const tickerIdx = headers.indexOf('ticker');
+  const maeIdx = headers.indexOf('test_mae');
+  const rmseIdx = headers.indexOf('test_rmse');
+  const r2Idx = headers.indexOf('test_r2');
+  const mapeIdx = headers.indexOf('test_mape');
+
+  if (tickerIdx === -1 || maeIdx === -1 || rmseIdx === -1 || r2Idx === -1 || mapeIdx === -1) {
+    return metrics;
+  }
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    
+    const parts = line.split(',');
+    if (parts.length < headers.length) continue;
+
+    const ticker = parts[tickerIdx]?.trim();
+    const mae = parseFloat(parts[maeIdx]?.trim() || '0');
+    const rmse = parseFloat(parts[rmseIdx]?.trim() || '0');
+    const r2 = parseFloat(parts[r2Idx]?.trim() || '0');
+    const mape = parseFloat(parts[mapeIdx]?.trim() || '0');
+
+    if (ticker && !isNaN(mae) && !isNaN(rmse) && !isNaN(r2) && !isNaN(mape)) {
+      metrics.set(ticker, { mae, rmse, r2, mape });
+    }
+  }
+  return metrics;
+};
+
+// --- Load Model Metrics ---
+export const getModelMetrics = async (): Promise<{
+  base: Map<string, { mae: number; rmse: number; r2: number; mape: number }>;
+  advanced: Map<string, { mae: number; rmse: number; r2: number; mape: number }>;
+}> => {
+  let baseMetrics = new Map<string, { mae: number; rmse: number; r2: number; mape: number }>();
+  let advancedMetrics = new Map<string, { mae: number; rmse: number; r2: number; mape: number }>();
+
+  // Load base model metrics
+  const baseSummaryText = await fetchCsvSafely('/output/base_model_summary.csv');
+  if (baseSummaryText) {
+    baseMetrics = parseSummaryCsv(baseSummaryText);
+    console.log(`Loaded base model metrics for ${baseMetrics.size} tickers.`);
+  }
+
+  // Load advanced model metrics
+  const advSummaryText = await fetchCsvSafely('/output/advanced_model_summary.csv');
+  if (advSummaryText) {
+    advancedMetrics = parseSummaryCsv(advSummaryText);
+    console.log(`Loaded advanced model metrics for ${advancedMetrics.size} tickers.`);
+  }
+
+  return { base: baseMetrics, advanced: advancedMetrics };
+};
+
 // --- Main Data Function ---
 
 export const getStockData = async (ticker: Ticker): Promise<StockDataPoint[]> => {

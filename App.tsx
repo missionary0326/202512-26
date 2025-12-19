@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { StockChart } from './components/StockChart';
 import { CorrelationChart } from './components/CorrelationChart';
-import { getStockData } from './services/mockDataService';
+import { getStockData, getModelMetrics } from './services/mockDataService';
 import { StockDataPoint, Ticker } from './types';
 import { BarChart3, TrendingUp, TrendingDown, Activity, DollarSign, LayoutDashboard, ArrowDown, Network, RefreshCw } from 'lucide-react';
 
@@ -10,10 +10,34 @@ function App() {
   const [data, setData] = useState<StockDataPoint[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedDay, setSelectedDay] = useState<StockDataPoint | null>(null);
+  const [modelMetrics, setModelMetrics] = useState<{
+    base: Map<string, { mae: number; rmse: number; r2: number; mape: number }>;
+    advanced: Map<string, { mae: number; rmse: number; r2: number; mape: number }>;
+  } | null>(null);
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({
     start: '2023-01-01',
     end: '2024-12-31'
   });
+
+  // Load model metrics once on mount
+  useEffect(() => {
+    let isMounted = true;
+    
+    const loadMetrics = async () => {
+      try {
+        const metrics = await getModelMetrics();
+        if (isMounted) {
+          setModelMetrics(metrics);
+        }
+      } catch (error) {
+        console.error("Failed to load model metrics", error);
+      }
+    };
+
+    loadMetrics();
+
+    return () => { isMounted = false; };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -78,6 +102,7 @@ function App() {
   }, []);
 
   // Calculate Metrics - use selectedDay if available, otherwise use latest
+  // Use metrics from CSV files (calculated by Python scripts) for accuracy
   const metrics = useMemo(() => {
     if (data.length === 0) return null;
     
@@ -91,62 +116,28 @@ function App() {
     const change = currentDay.close - prev.close;
     const changePct = (change / prev.close) * 100;
     
-    // Filter to TEST SET ONLY (2024 data) for model performance metrics
-    const testData = data.filter(d => d.date >= '2024-01-01');
-    const n = testData.length;
+    // Get metrics from CSV files (calculated by Python scripts)
+    // This ensures accuracy and consistency with the model training results
+    const baseMetrics = modelMetrics?.base.get(ticker);
+    const advMetrics = modelMetrics?.advanced.get(ticker);
     
-    if (n === 0) {
-      // Fallback if no test data
-      return { 
-        currentDay, change, changePct, 
-        baseError: 0, advError: 0, 
-        baseMAE: 0, baseRMSE: 0, baseR2: 0, baseMAPE: 0,
-        advMAE: 0, advRMSE: 0, advR2: 0, advMAPE: 0,
-        isHovering: !!selectedDay 
-      };
-    }
-    
-    // Base Model Metrics (TEST SET ONLY)
-    const baseErrors = testData.map(d => d.close - d.basePrediction);
-    const baseAbsErrors = baseErrors.map(e => Math.abs(e));
-    const baseSqErrors = baseErrors.map(e => e * e);
-    const basePctErrors = testData.map(d => Math.abs((d.close - d.basePrediction) / d.close) * 100);
-    
-    const baseMAE = baseAbsErrors.reduce((a, b) => a + b, 0) / n;
-    const baseRMSE = Math.sqrt(baseSqErrors.reduce((a, b) => a + b, 0) / n);
-    const baseMAPE = basePctErrors.reduce((a, b) => a + b, 0) / n;
-    
-    // R² for Base Model (TEST SET ONLY)
-    const meanClose = testData.reduce((a, d) => a + d.close, 0) / n;
-    const ssTot = testData.reduce((a, d) => a + Math.pow(d.close - meanClose, 2), 0);
-    const ssResBase = baseSqErrors.reduce((a, b) => a + b, 0);
-    const baseR2 = 1 - (ssResBase / ssTot);
-    
-    // Advanced Model Metrics (TEST SET ONLY)
-    const advErrors = testData.map(d => d.close - d.advancedPrediction);
-    const advAbsErrors = advErrors.map(e => Math.abs(e));
-    const advSqErrors = advErrors.map(e => e * e);
-    const advPctErrors = testData.map(d => Math.abs((d.close - d.advancedPrediction) / d.close) * 100);
-    
-    const advMAE = advAbsErrors.reduce((a, b) => a + b, 0) / n;
-    const advRMSE = Math.sqrt(advSqErrors.reduce((a, b) => a + b, 0) / n);
-    const advMAPE = advPctErrors.reduce((a, b) => a + b, 0) / n;
-    
-    // R² for Advanced Model (TEST SET ONLY)
-    const ssResAdv = advSqErrors.reduce((a, b) => a + b, 0);
-    const advR2 = 1 - (ssResAdv / ssTot);
-    
-    // Daily Error for the current/hovered day
+    // Daily Error for the current/hovered day (still calculated from data)
     const baseError = Math.abs(currentDay.close - currentDay.basePrediction);
     const advError = Math.abs(currentDay.close - currentDay.advancedPrediction);
     
     return { 
       currentDay, change, changePct, baseError, advError, 
-      baseMAE, baseRMSE, baseR2, baseMAPE,
-      advMAE, advRMSE, advR2, advMAPE,
+      baseMAE: baseMetrics?.mae || 0,
+      baseRMSE: baseMetrics?.rmse || 0,
+      baseR2: baseMetrics?.r2 || 0,
+      baseMAPE: baseMetrics?.mape || 0,
+      advMAE: advMetrics?.mae || 0,
+      advRMSE: advMetrics?.rmse || 0,
+      advR2: advMetrics?.r2 || 0,
+      advMAPE: advMetrics?.mape || 0,
       isHovering: !!selectedDay 
     };
-  }, [data, selectedDay]);
+  }, [data, selectedDay, modelMetrics, ticker]);
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 pb-12">
