@@ -292,15 +292,31 @@ const parseNewsCsv = (csvText: string): Map<string, { sentiment: number; headlin
 };
 
 // --- Helper to get correct path for GitHub Pages ---
-// In GitHub Pages, base path is /202512-26/, so we need to prepend it to absolute paths
+// Use Vite's BASE_URL or fallback to hardcoded value
+const getBasePath = (): string => {
+  // In browser, try to get base URL from current location or use default
+  if (typeof window !== 'undefined') {
+    // Extract base path from current URL
+    const pathname = window.location.pathname;
+    // If pathname starts with /202512-26/, use that
+    if (pathname.startsWith('/202512-26/')) {
+      return '/202512-26';
+    }
+  }
+  // Fallback to hardcoded base path
+  return '/202512-26';
+};
+
 const getResourcePath = (path: string): string => {
+  const basePath = getBasePath();
+  
   // If path already starts with base path, return as is
-  if (path.startsWith('/202512-26/')) {
+  if (path.startsWith(`${basePath}/`)) {
     return path;
   }
   // If path is absolute (starts with /), prepend base path
   if (path.startsWith('/')) {
-    return `/202512-26${path}`;
+    return `${basePath}${path}`;
   }
   // Relative paths work as is
   return path;
@@ -308,11 +324,14 @@ const getResourcePath = (path: string): string => {
 
 // --- Helper to fetch CSV safely ---
 const fetchCsvSafely = async (url: string): Promise<string | null> => {
-  // Try multiple paths: original, with base path, and relative
+  // Try multiple paths: with base path first (for GitHub Pages), then original, then relative
+  const basePath = getResourcePath(url);
+  const relativePath = url.startsWith('/') ? `.${url}` : url;
+  
   const pathsToTry = [
+    basePath, // With base path (works in GitHub Pages) - try this first!
     url, // Original path (works in local dev)
-    getResourcePath(url), // With base path (works in GitHub Pages)
-    url.startsWith('/') ? `.${url}` : url, // Relative path
+    relativePath, // Relative path
   ];
 
   for (const finalUrl of pathsToTry) {
@@ -320,6 +339,10 @@ const fetchCsvSafely = async (url: string): Promise<string | null> => {
       const response = await fetch(finalUrl);
       
       if (!response.ok) {
+        // Log for debugging (only in development)
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`fetchCsvSafely: ${finalUrl} returned ${response.status}`);
+        }
         continue; // Try next path
       }
 
@@ -330,18 +353,36 @@ const fetchCsvSafely = async (url: string): Promise<string | null> => {
       if (!isJsonOrHtml) {
         const text = await response.text();
         // Check if it's HTML (404 page) or actual CSV
-        if (!text.trim().toLowerCase().startsWith("<!doctype") && 
-            !text.trim().toLowerCase().startsWith("<html") &&
-            !text.trim().toLowerCase().startsWith("<!doctype")) {
+        const trimmedText = text.trim().toLowerCase();
+        if (!trimmedText.startsWith("<!doctype") && 
+            !trimmedText.startsWith("<html")) {
+          console.log(`fetchCsvSafely: Successfully loaded ${finalUrl}`);
           return text;
+        } else {
+          // Got HTML instead of CSV, try next path
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`fetchCsvSafely: ${finalUrl} returned HTML instead of CSV`);
+          }
+          continue;
         }
+      } else {
+        // Got JSON or HTML content type, try next path
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`fetchCsvSafely: ${finalUrl} returned ${contentType}`);
+        }
+        continue;
       }
     } catch (error) {
       // Try next path
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`fetchCsvSafely: Error fetching ${finalUrl}:`, error);
+      }
       continue;
     }
   }
   
+  // All paths failed
+  console.warn(`fetchCsvSafely: Failed to load ${url} from all attempted paths:`, pathsToTry);
   return null;
 };
 
