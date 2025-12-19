@@ -147,11 +147,11 @@ export const CorrelationChart: React.FC<CorrelationChartProps> = ({ data }) => {
   }, [data]);
 
   return (
-    <div className="h-[420px] w-full bg-gray-900/50 p-4 rounded-xl border border-gray-800">
+    <div className="h-[420px] min-h-[420px] w-full min-w-0 bg-gray-900/50 p-4 rounded-xl border border-gray-800">
       <h3 className="text-gray-400 text-sm font-semibold mb-2 uppercase tracking-wider">
         Sentiment vs. Price Correlation (D3.js)
       </h3>
-      <svg ref={svgRef} className="w-full h-[350px] overflow-visible" />
+      <svg ref={svgRef} className="w-full h-[350px] min-h-[350px] overflow-visible" />
     </div>
   );
 };

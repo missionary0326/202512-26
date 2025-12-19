@@ -50,8 +50,8 @@ const CustomTooltip = ({ active, payload, label, onHover, onLeave }: any) => {
 
 export const StockChart: React.FC<StockChartProps> = ({ data, onHover, onLeave }) => {
   return (
-    <div className="h-[400px] w-full bg-gray-900/50 p-4 rounded-xl border border-gray-800">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="h-[400px] min-h-[400px] w-full min-w-0 bg-gray-900/50 p-4 rounded-xl border border-gray-800">
+      <ResponsiveContainer width="100%" height="100%" minHeight={400}>
         <LineChart
           data={data}
           margin={{
