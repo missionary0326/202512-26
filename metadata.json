@@ -1,0 +1,4 @@
+{
+  "name": "FinSent: Market Correlation Analyzer",
+  "description": "A sophisticated financial dashboard visualizing the correlation between market sentiment and stock price movements, comparing univariate vs. multivariate prediction models."
+}
